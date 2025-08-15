@@ -1,0 +1,22 @@
+#cloud-config
+hostname: ubuntuB
+fqdn: ubuntuB.local
+manage_etc_hosts: true
+chpasswd:
+  expire: false
+  list: |
+    ubuntu:ubuntu
+    root:root
+
+ssh_pwauth: true
+disable_root: false
+
+network:
+  version: 2
+  ethernets:
+    enp1s0:
+      dhcp4: no
+      addresses: [192.168.122.198/24]
+      gateway4: 192.168.122.1
+      nameservers:
+        addresses: [8.8.8.8, 8.8.4.4]
