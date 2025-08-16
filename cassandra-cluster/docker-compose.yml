@@ -6,11 +6,11 @@ services:
       - "9042:9042"
     networks:
       cassandra_net:
-        ipv4_address: 192.168.122.200
+        ipv4_address: 192.168.1.200
     environment:
       - CASSANDRA_CLUSTER_NAME=TestCluster
-      - CASSANDRA_BROADCAST_ADDRESS=192.168.122.200
-      - CASSANDRA_SEEDS=192.168.122.200,192.168.122.201,192.168.122.202
+      - CASSANDRA_BROADCAST_ADDRESS=192.168.1.200
+      - CASSANDRA_SEEDS=192.168.1.200,192.168.1.201,192.168.1.202
       - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
       - MAX_HEAP_SIZE=2G
       - HEAP_NEWSIZE=512M
@@ -26,11 +26,11 @@ services:
       - "9043:9042"
     networks:
       cassandra_net:
-        ipv4_address: 192.168.122.201
+        ipv4_address: 192.168.1.201
     environment:
       - CASSANDRA_CLUSTER_NAME=TestCluster
-      - CASSANDRA_BROADCAST_ADDRESS=192.168.122.201
-      - CASSANDRA_SEEDS=192.168.122.200,192.168.122.201,192.168.122.202
+      - CASSANDRA_BROADCAST_ADDRESS=192.168.1.201
+      - CASSANDRA_SEEDS=192.168.1.200,192.168.1.201,192.168.1.202
       - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
       - MAX_HEAP_SIZE=2G
       - HEAP_NEWSIZE=512M
@@ -46,11 +46,11 @@ services:
       - "9044:9042"
     networks:
       cassandra_net:
-        ipv4_address: 192.168.122.202
+        ipv4_address: 192.168.1.202
     environment:
       - CASSANDRA_CLUSTER_NAME=TestCluster
-      - CASSANDRA_BROADCAST_ADDRESS=192.168.122.202
-      - CASSANDRA_SEEDS=192.168.122.200,192.168.122.201,192.168.122.202
+      - CASSANDRA_BROADCAST_ADDRESS=192.168.1.202
+      - CASSANDRA_SEEDS=192.168.1.200,192.168.1.201,192.168.1.202
       - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
       - MAX_HEAP_SIZE=2G
       - HEAP_NEWSIZE=512M
@@ -66,5 +66,5 @@ networks:
       parent: enp1s0
     ipam:
       config:
-        - subnet: 192.168.122.0/24
-          gateway: 192.168.122.1
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1
