@@ -1,9 +1,8 @@
 services:
   cassandra1:
-    build: .
-    container_name: cassandra1
+    image: cassandra:latest
+    container_name: cassandra2
     ports:
-      - "2222:22"
       - "9042:9042"
     networks:
       cassandra_net:

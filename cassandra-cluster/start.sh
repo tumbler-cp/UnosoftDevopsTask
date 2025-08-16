@@ -1,5 +1,5 @@
-#!/bin/bash
+#!/bin/sh
 
-/usr/sbin/sshd
+service ssh start
 
-exec /usr/local/bin/docker-entrypoint.sh cassandra -f
+exec docker-entrypoint.sh "$@"

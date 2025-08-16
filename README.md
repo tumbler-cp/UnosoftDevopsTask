@@ -1,216 +1,196 @@
-## Ходжаев Абдужалол 
+## Ходжаев Абдужалол
+
 # Задание
-- На машине А (ubuntu 24.04 lts) в локальной сети с ip 192.168.1.197 запускается скрипт docker-compose для поднятия 3 образов с ip адресами 192.168.1.200-202.
-- Затем с машины Б (ubuntu 24.04 lts) из той же локальной сети с ip 192.168.1.198 необходимо подключиться через cqlsh к каждой из машин-образов.
-- Настроить ssh для возможности подключения к 1.200 с 1.197
+
+- На машине А (Ubuntu 24.04 LTS) в локальной сети с IP 192.168.1.197 необходимо запустить docker-compose скрипт для поднятия трёх контейнеров Cassandra с IP-адресами 192.168.1.200–202.
+- С машины Б (Ubuntu 24.04 LTS) из той же сети с IP 192.168.1.198 требуется подключиться к каждому из контейнеров через `cqlsh`.
+- Настроить SSH-доступ с 1.197 на 1.200.
 
 >[!Note]
-> Для тестирования скрипта использовалось окружение с виртуальными машинами. Подробности в соответствующей [директории](/testenv/)
+> Для тестирования использовалась среда с виртуальными машинами. Подробнее — в [директории](/testenv/).
 
-# 3 образа кассандры с указанными ip адресами
+# Кластер из 3 контейнеров Cassandra с фиксированными IP
 
 ## На машине А
 
-Все три сервиса описаны в одном файле. В текущем случае N-го сервиса нужно открыть порты, настроить через переменные окружения, а также описать взаимодействия с сетью.
+Все сервисы описаны в одном `docker-compose.yml`. Для каждого контейнера необходимо открыть порты, задать переменные окружения и корректно настроить сеть.
 
-Начну с сети. Чтобы образы были доступны в локальной сети, NAT-сеть докера не подходит. Можно воспользоваться `macvlan` - сетью . Основная идея `macvlan` в создании виртуальных интерфейсов, которые рассматрываются системой как отдельное устройство. Каждый интерфейс получает свой MAC-адрес. 
+### Сетевое окружение
 
-Настроим сеть:
-```YAML
+Для доступа к контейнерам из локальной сети стандартная NAT-сеть Docker не подходит. Используем драйвер `macvlan`, который позволяет контейнерам получать собственные MAC-адреса и выглядеть как отдельные устройства в сети.
+
+Пример настройки сети:
+```yaml
 networks:
-  cassandra_net: 
-    driver: macvlan # Тип драйвера сети нужнр указать macvlan
-    driver_opts:
-      parent: enp1s0 # Нужно будет указать физический интерфейс который станет шлюзом/посредником для сети контейнеров
-    ipam:
-      config:
-        - subnet: 192.168.1.0/24 
-          gateway: 192.168.1.1 # Шлюз для этой сети
-
+    cassandra_net:
+        driver: macvlan
+        driver_opts:
+            parent: enp1s0 # Укажите физический интерфейс, через который контейнеры будут доступны
+        ipam:
+            config:
+                - subnet: 192.168.1.0/24
+                    gateway: 192.168.1.1
 ```
 
-`- subnet: 192.168.1.0/24` - Нужно указать подсеть в котором будут работать контейнеры. Зная что машины и образы находятся в пределе `192.168.1.197-202`, можно было бы сузить подсеть например до `192.168.1.192/28` (16 адресов) и зарезервировать эти адреса в роутере, чтобы контейнеры не занимали чужие IP
+`subnet` определяет диапазон адресов для контейнеров. Если известно, что используются только адреса 192.168.1.197–202, можно сузить подсеть, например до `192.168.1.192/28` и зарезервировать эти адреса на роутере.
 
-Для N-й `cassandra` следующее описание:
-```YAML
+### Пример описания сервиса Cassandra
+
+```yaml
 ...
 cassandraN:
     image: cassandra:latest
     container_name: cassandraN
     ports:
-      - "K:9042" # K = 9042 + N - 1 или любой другой свободный порт
+        - "K:9042" # K = 9042 + N - 1 или другой свободный порт
     networks:
-      cassandra_net:
-        ipv4_address: 192.168.1.201 # Адрес в сети
+        cassandra_net:
+            ipv4_address: 192.168.1.201
     environment:
-      - CASSANDRA_CLUSTER_NAME=TestCluster # Имя кластера
-      - CASSANDRA_BROADCAST_ADDRESS=192.168.1.201 # Адрес бродкаста
-      - CASSANDRA_SEEDS=192.168.1.200,192.168.1.201,192.168.1.202 # Другие ноды кластера
-      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+        - CASSANDRA_CLUSTER_NAME=TestCluster
+        - CASSANDRA_BROADCAST_ADDRESS=192.168.1.201
+        - CASSANDRA_SEEDS=192.168.1.200,192.168.1.201,192.168.1.202
+        - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
 ...
-``` 
+```
 
-Но если как в моём случае памяти немного (ВМ), можно столкнутся со следующей проблемой:
+### Ограничение ресурсов
+
+На слабых машинах (например ВМ как у меня) возможна ошибка Out of Memory:
+
 ![Out of memory screenshot](./pictures/oom.png "Ошибка Out of memory")
 
-Поэтому нужно ограничить образ:
-```YAML
+Тогда нужно ограничить ресурсы JVM и (опционально) контейнера:
+
+```yaml
 ...
     environment:
-      - MAX_HEAP_SIZE=2G
-      - HEAP_NEWSIZE=512M
+        - MAX_HEAP_SIZE=2G
+        - HEAP_NEWSIZE=512M
 ...
     deploy:
-      resources:
-        limits:
-          memory: 2g
+        resources:
+            limits:
+                memory: 2g
 ...
 ```
 
-В первую очередь нужно ограничить jvm
-```
-MAX_HEAP_SIZE=2G
-HEAP_NEWSIZE=512M
-```
+### Запуск
 
-Этого скорее всего будет достаточно, но можно также ограничить контейнер:
-```
-    deploy:
-      resources:
-        limits:
-          memory: 2g
-```
-
-
-Запускаем:
 ![Launched script](./pictures/firstlaunch.png)
 
-## Переключяемся на машину Б
-В `ubuntu-24.04-lts` можно установить `cqlsh` через snap store. Установим одноимённый пакет
+## Работа на машине Б
+
+Нужно установить `cqlsh` через snap:
 
 ```bash
 sudo snap install cqlsh
 ```
 
-Проверим соединение
+Проверить соединение:
 
 ![CQLSH](./pictures/cqlsh.png)
 
+## Возвращаемся на машину А
 
-Как видим соединение есть
+Попытка подключения по ssh к контейнеру завершится ошибкой `Connection refused`, так как ssh-сервер на контейнере не установлен и не запущен. Кроме того, при использовании `macvlan` контейнеры недоступны с хоста напрямую из-за особенностей маршрутизации.
 
-## Переключаемся на машину А
+### Решение проблемы сетевой доступности
 
-Если мы просто попробуем подключиться по ssh к первому образу, мы получим ошибку `Connection refused`, так как сервер ssh в образе не установлен и не запущен. 
+Создадим дополнительный интерфейс для связи между хостом и сетью macvlan:
 
-Но даже если мы просто попробуем попинговать образы из машины А, ответов не будет, так как при использовании `macvlan` создаётся виртуальный интерфейс, и для сети это будет выглядет как отдельная сетевая карта. При этом, macvlan не роутит пакеты между физическим и вирутальным интерфейсом. 
-
-Сначала нам нужно решить проблему соединения, потом настроить ssh.
-
-**Соединение**
-Создадим новый интерфейс который будет бриджом между хостом и macvlan сетью
 ```bash
 ip link add virtnet-shim link enp1s0 type macvlan mode bridge
-```
-
-Назначим ему свободный адрес из 192.168.1.0/24
-```bash
 ip addr add 192.168.1.192/32 dev virtnet-shim
-```
-
-Поднимем этот интерфейс:
-```bash
 ip link set virtnet-shim up
-```
-
-Назначим его шлюзем для 192.168.1.200
-```bash
 ip route add 192.168.1.200/32 dev virtnet-shim
 ```
-`/32` значит только этот адрес
+`/32` — маршрут только к одному адресу.
 
-Теперь образ .200 пингуется
+Теперь контейнер с адресом .200 доступен с хоста:
 
 ![PING](./pictures/ping.png)
 
-**Настройка ssh**
+### Настройка SSH
 
-Опционально с помощью `docker exec -it cassandra1 bash`, можно выполнить
-`cat /etc/os-release` и выяснить на каком ОС основан образ (Если не увидели название ОС при входе в `bash` контейнера)
+Для установки SSH-сервера потребуется изменить образ Cassandra.
 
-![OS](./pictures/osrel.png)
+#### Dockerfile:
 
-Но это можно было бы сделать если бы команда `apt` не была распознана
-
-Отключаем контейнеры
-```bash
-docker compose down
-```
-
-Добавляем `Dockerfile`:
 ```Dockerfile
 FROM cassandra:latest
 
-RUN apt update && \
-    apt install -y openssh-server sudo && \
-    mkdir -p /var/run/sshd && \
-    useradd -ms /bin/bash sshuser && \
-    echo 'sshuser:password' | chpasswd && \ 
-    usermod -aG sudo sshuser 
+RUN apt-get update && \
+        apt-get install -y --no-install-recommends openssh-server && \
+        rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -u 1337 cassandra || true && \
+        mkdir -p /home/cassandra/.ssh && \
+        chown cassandra:cassandra /home/cassandra/.ssh && \
+        chmod 700 /home/cassandra/.ssh
+
+COPY id_rsa.pub /tmp/id_rsa.pub
+RUN cat /tmp/id_rsa.pub >> /home/cassandra/.ssh/authorized_keys && \
+        chown cassandra:cassandra /home/cassandra/.ssh/authorized_keys && \
+        chmod 600 /home/cassandra/.ssh/authorized_keys && \
+        rm /tmp/id_rsa.pub
+
+RUN echo "PubkeyAuthentication yes" >> /etc/ssh/sshd_config && \
+        sed -i \
+                -e 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' \
+                -e 's/#PasswordAuthentication yes/PasswordAuthentication no/' \
+                /etc/ssh/sshd_config
 
 COPY start.sh /start.sh
-RUN chmod +x /start.sh  
+RUN chmod +x /start.sh
 
-CMD [ "/start.sh" ]
+CMD ["/start.sh"]
 ```
 
-Свой образ cassandra с ssh создаём на основе официального образа cassandra. 
+- Устанавливается `openssh-server`
+- Создаётся пользователь cassandra с домашней директорией
+- Публичный ключ копируется в `authorized_keys`
+- Включается аутентификация по ключу, отключается root и парольный доступ
 
-Нужно установить следующие пакеты:
-- `openssh-server` для сервера ssg
-- `sudo` (опционально) для работы с рут правами через ssh
+#### Скрипт запуска `start.sh`:
 
-Можно было бы сделать возможным подключится через ssh как рут, но это небезопасно.
-
-Добавляем нового пользователья и запускаем скрипт со следующим содержанием:
 ```bash
-#!/bin/bash
-
-/usr/sbin/sshd &
-
-exec /usr/local/bin/docker-entrypoint.sh cassandra -f
+service ssh start
+exec docker-entrypoint.sh "$@"
 ```
-`/usr/sbin/sshd &` - запуск ssh
-`exec /usr/local/bin/docker-entrypoint.sh cassandra -f` - запуск cassandra
 
-С новыми файлами нужно изменить скрипт docker-compose:
-```YAML
+#### Изменения в docker-compose:
+
+```yaml
 ...
-  cassandra1:
-    build: .
-    container_name: cassandra1
-    ports:
-      - "9042:9042"
-    networks:
-      cassandra_net:
-        ipv4_address: 192.168.1.200
-    environment:
-      - CASSANDRA_CLUSTER_NAME=TestCluster
-      - CASSANDRA_BROADCAST_ADDRESS=192.168.1.200
-      - CASSANDRA_SEEDS=192.168.1.200,192.168.1.201,192.168.1.202
-      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
-      - MAX_HEAP_SIZE=2G
-      - HEAP_NEWSIZE=512M
-    deploy:
-      resources:
-        limits:
-          memory: 3g
+    cassandra1:
+        build: .
+        container_name: cassandra1
+        ports:
+            - "9042:9042"
+        networks:
+            cassandra_net:
+                ipv4_address: 192.168.1.200
+        environment:
+            - CASSANDRA_CLUSTER_NAME=TestCluster
+            - CASSANDRA_BROADCAST_ADDRESS=192.168.1.200
+            - CASSANDRA_SEEDS=192.168.1.200,192.168.1.201,192.168.1.202
+            - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+            - MAX_HEAP_SIZE=2G
+            - HEAP_NEWSIZE=512M
+        deploy:
+            resources:
+                limits:
+                    memory: 3g
 ...
 ```
 
-Добавлен `build: .`, чтобы образ для первой cassandra собрался из Dockerfile на той же директории. При изменениях в `Dockerfile` или `start,sh` можно выполнять `docker compose build` с параметром `--no-cache`. Это нужно, чтобы не использовался кешированный образ, собранный из старого `Dockerfile` или с использованием старого `start.sh`
+`build: .` указывает на контекст сборки образа из текущей директории. После изменений в `Dockerfile` или `start.sh` нужно отключать кэш: 
+```bash
+docker compose build --no-cache
+```
 
-Запускаем скрипт и проверяем:
+Запустим контейнеры и проверим SSH-доступ:
 
 ![ssh](./pictures/ssh.png)
 
@@ -219,14 +199,24 @@ exec /usr/local/bin/docker-entrypoint.sh cassandra -f
 ![RESULT](./pictures/result.png)
 
 # Комментарии
->[!NOTE]
->Причина по которой во всех скриншотах сеть 192.168.122.0/24 объяснена [здесь](./testenv/)
 
 >[!NOTE]
->При использовании скрипта из этого репозитория нужно изменить родительский интерфейс на нужный интерфейс хоста в networks
+> Причина использования сети 192.168.122.0/24 на скриншотах объяснена [здесь](./testenv/)
+
+>[!NOTE]
+> Не забыть учесть корректность физическего интерфейса в секции `networks`
+
+>[!NOTE]
+> Для ssh-доступа скопировать публичный ключ с машины А в директорию с `Dockerfile`
+
+>[!Warning]
+> Без настройки SSH контейнеры не будут принимать подключения. Для тестирования без SSH используйте [этот скрипт](./cassandra-cluster-nossh/docker-compose.yml)
 
 # Ссылки
 
-- Образ cassandra https://hub.docker.com/_/cassandra 
-- Полезный гайд по macvlan https://blog.oddbit.com/post/2018-03-12-using-docker-macvlan-networks/
-- 
+- [Официальный образ Cassandra](https://hub.docker.com/_/cassandra)
+- [Гайд по macvlan](https://blog.oddbit.com/post/2018-03-12-using-docker-macvlan-networks/)
+- [Документация sshd](https://www.opennet.ru/man.shtml?topic=sshd&category=8&russian=0)
+- [Запуск контейнера из Dockerfile](https://forums.docker.com/t/start-container-service-in-a-shell-or-not/126051/3)
+- [Cassandra seed nodes](https://www.ibm.com/docs/en/npi/1.3.1?topic=cluster-setting-up-cassandra-seed-nodes)
+- [Решение OutOfMemory](https://support.datastax.com/s/article/java-lang-OutOfMemoryError-Java-heap-space)
