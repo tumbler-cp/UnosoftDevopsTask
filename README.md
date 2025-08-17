@@ -74,9 +74,13 @@ cassandraN:
         - CASSANDRA_CLUSTER_NAME=TestCluster
         - CASSANDRA_BROADCAST_ADDRESS=192.168.1.201
         - CASSANDRA_SEEDS=192.168.1.200,192.168.1.201,192.168.1.202
-        - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
 ...
 ```
+Для настройки будем использовать переменные окружения:
+- `CASSANDRA_CLUSTER_NAME` - просто имя кластера. Опциально, т.к. и так значение по умолчанию `Test Cluster`
+- `CASSANDRA_BROADCAST_ADDRESS` - нода сообщает этот адрес другим нодам для соединения
+- `CASSANDRA_SEEDS` - я решил, что не просто так нужно 3 ноды. В 3-х single нодах со статичным IP меньше смысла
+
 
 ### Ограничение ресурсов
 
